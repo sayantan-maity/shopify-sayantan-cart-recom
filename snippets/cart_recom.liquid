@@ -1,0 +1,144 @@
+{% comment %} <!-- Slider main container -->
+<div class="swiper">
+  <!-- Additional required wrapper -->
+  <div class="swiper-wrapper">
+    <!-- Slides -->
+    <div class="swiper-slide">Slide 1</div>
+    <div class="swiper-slide">Slide 2</div>
+    <div class="swiper-slide">Slide 3</div>
+    ...
+  </div>
+  <!-- If we need pagination -->
+  <div class="swiper-pagination"></div>
+
+  <!-- If we need navigation buttons -->
+  <div class="swiper-button-prev"></div>
+  <div class="swiper-button-next"></div>
+
+  <!-- If we need scrollbar -->
+  <div class="swiper-scrollbar"></div>
+</div>
+ {% endcomment %}
+
+<div id="cart-recommendations" class="cart-recommendations">
+  <h2>You might also like</h2>
+  <div class="swiper cart_swiper">
+    <div class="swiper-wrapper" id="recommendation-grid"></div>
+  </div>
+</div>
+
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const recommendationContainer = document.getElementById("recommendation-grid");
+
+      function renderProducts(products) {
+        const container = document.getElementById("recommendation-grid");
+        container.innerHTML = '';
+      
+        products.forEach(product => {
+          console.log('Recommended product:', product);
+          let p_price = product.price /100;
+      
+          const variantId = product.variants?.[0]?.id;
+          const isAvailable = product.available !== false;
+      
+          const productHTML = `
+            <div class="grid__item">
+              <a href="${product.url}" class="product-card">
+                <img src="${product.featured_image}" alt="${product.title}" loading="lazy" />
+                <h3>${product.title}</h3>
+                <p>{{ shop.currency }} ${p_price}</p>
+              </a>
+      
+              ${isAvailable && variantId ? `
+              <product-form class="product-form" data-hide-errors="false" data-section-id="template--18757607424196__main">
+                <form method="post" action="/cart/add" accept-charset="UTF-8" class="form js-quick-form" enctype="multipart/form-data" novalidate="novalidate" data-type="add-to-cart-form">
+                  <input type="hidden" name="id" value="${variantId}" class="product-variant-id">
+                  <input type="hidden" name="form_type" value="product">
+                  <input type="hidden" name="utf8" value="✓">
+                  <input type="hidden" name="product-id" value="${product.id}">
+                  <button type="submit" name="add" class="quick-add-button button button--primary">
+                    Add to cart
+                  </button>
+                </form>
+                </product-form>
+              ` : `<button class="button button--secondary" disabled>Sold out</button>`
+              }
+            </div>
+          `;
+      
+          container.innerHTML += productHTML;
+        });
+      
+        // Attach click behavior for "Added" label (no AJAX)
+        document.querySelectorAll('.js-quick-form').forEach(form => {
+          form.addEventListener('submit', function (e) {
+            const button = form.querySelector('button');
+      
+            button.innerText = 'Added';
+            setTimeout(() => {
+              button.innerText = 'Add to cart';
+            }, 3000);
+          });
+        });
+      }
+
+
+
+    function fillWithAllCollection(existingProducts) {
+        const needed = 4 - existingProducts.length;
+        console.log(`🧮 Existing recommended products:`, existingProducts);
+        console.log(`🔢 Need ${needed} more products to reach 4`);
+      
+        fetch('/collections/all/products.json?limit=20')
+          .then(response => response.json())
+          .then(data => {
+            const allProducts = data.products;
+            console.log('📦 Raw fallback products:', allProducts);
+      
+            const fallbackHandles = allProducts
+              .filter(fp => !existingProducts.some(ep => ep.id === fp.id))
+              .slice(0, needed)
+              .map(p => p.handle);
+      
+            console.log(`🔗 Fetching full details for handles:`, fallbackHandles);
+      
+            const productDetailPromises = fallbackHandles.map(handle =>
+              fetch(`/products/${handle}.js`).then(res => res.json())
+            );
+      
+            Promise.all(productDetailPromises)
+              .then(fallbackFullProducts => {
+                const combined = existingProducts.concat(fallbackFullProducts);
+                renderProducts(combined);
+              })
+              .catch(err => {
+                console.error('error', err);
+              });
+          });
+      }
+
+
+
+    fetch("/cart.js")
+      .then(response => response.json())
+      .then(cart => {
+        if (cart.items.length === 0) return;
+
+        const lastItem = cart.items[cart.items.length - 1];
+        const productId = lastItem.product_id;
+
+        fetch(`/recommendations/products.json?product_id=${productId}&limit=4`)
+          .then(response => response.json())
+          .then(data => {
+            const recommended = data.products || [];
+
+            if (recommended.length < 4) {
+              fillWithAllCollection(recommended);
+            } else {
+              renderProducts(recommended);
+            }
+          });
+      });
+  });
+</script>
